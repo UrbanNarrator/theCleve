@@ -10,6 +10,8 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { ParamListBase } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Card from '../../components/card';
 import Loading from '../../components/loading';
 import ProductItem from '../../components/productItem';
@@ -19,12 +21,19 @@ import { useAuth } from '../../context/authContext';
 import { useCart } from '../../context/cartContext';
 
 const Home: React.FC = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<ParamListBase>>();
   const { currentUser } = useAuth();
   const { addToCart } = useCart();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
+
+  const categories = [
+    { id: '1', name: 'Knives', color: '#3498db', icon: '🔪' },
+    { id: '2', name: 'Forks', color: '#2ecc71', icon: '🍴' },
+    { id: '3', name: 'Spoons', color: '#e74c3c', icon: '🥄' },
+    { id: '4', name: 'Sets', color: '#9b59b6', icon: '🍽️' },
+  ];
 
   const loadHomeData = async () => {
     try {
@@ -49,8 +58,7 @@ const Home: React.FC = () => {
 
   const handleProductPress = (product: Product) => {
     // Navigate to product details
-    // For simplicity, we'll just redirect to the Products screen
-    navigation.navigate('Products' as never);
+    navigation.navigate('Products');
   };
 
   const handleAddToCart = (product: Product) => {
@@ -85,7 +93,7 @@ const Home: React.FC = () => {
           <Text style={styles.bannerText}>Elevate your dining experience</Text>
           <TouchableOpacity
             style={styles.bannerButton}
-            onPress={() => navigation.navigate('Products' as never)}
+            onPress={() => navigation.navigate('Products')}
           >
             <Text style={styles.bannerButtonText}>Shop Now</Text>
           </TouchableOpacity>
@@ -95,7 +103,7 @@ const Home: React.FC = () => {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Featured Products</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Products' as never)}>
+          <TouchableOpacity onPress={() => navigation.navigate('Products')}>
             <Text style={styles.seeAllText}>See All</Text>
           </TouchableOpacity>
         </View>
@@ -125,41 +133,18 @@ const Home: React.FC = () => {
       <View style={styles.categoriesSection}>
         <Text style={styles.sectionTitle}>Categories</Text>
         <View style={styles.categoriesContainer}>
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => navigation.navigate('Category' as never, { category: 'Knives' } as never)}
-          >
-            <View style={styles.categoryContent}>
-              <Text style={styles.categoryTitle}>Knives</Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => navigation.navigate('Category' as never, { category: 'Forks' } as never)}
-          >
-            <View style={styles.categoryContent}>
-              <Text style={styles.categoryTitle}>Forks</Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => navigation.navigate('Category' as never, { category: 'Spoons' } as never)}
-          >
-            <View style={styles.categoryContent}>
-              <Text style={styles.categoryTitle}>Spoons</Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.categoryCard}
-            onPress={() => navigation.navigate('Category' as never, { category: 'Sets' } as never)}
-          >
-            <View style={styles.categoryContent}>
-              <Text style={styles.categoryTitle}>Sets</Text>
-            </View>
-          </TouchableOpacity>
+          {categories.map((category) => (
+            <TouchableOpacity
+              key={category.id}
+              style={styles.categoryCard}
+              onPress={() => navigation.navigate('Category', { category: category.name })}
+            >
+              <View style={[styles.categoryContent, { backgroundColor: category.color }]}>
+                <Text style={styles.categoryIcon}>{category.icon}</Text>
+                <Text style={styles.categoryTitle}>{category.name}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
         </View>
       </View>
 
@@ -290,7 +275,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#3498db',
+  },
+  categoryIcon: {
+    fontSize: 24,
+    marginBottom: 8,
+    color: '#fff',
   },
   categoryTitle: {
     fontSize: 16,
