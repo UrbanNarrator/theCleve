@@ -15,7 +15,7 @@ import ProductItem from '../../components/productItem';
 import Loading from '../../components/loading';
 import { getAllProducts, getProductsByCategory } from '../../services/products';
 import { Product } from '../../types/product';
-import { useCart } from '../../context/CartContext';
+import { useCart } from '../../context/cartContext';
 
 const Products: React.FC = () => {
   const navigation = useNavigation();

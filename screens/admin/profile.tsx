@@ -13,7 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import Card from '../../components/card';
 import Button from '../../components/button';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/authContext';
 import { logoutUser, updateUserProfile, getUserById } from '../../services/auth';
 import { User } from '../../types/user';
 

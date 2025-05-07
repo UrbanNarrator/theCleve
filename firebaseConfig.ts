@@ -7,12 +7,13 @@ import { getStorage } from 'firebase/storage';
 // Your web app's Firebase configuration
 // Replace with your actual Firebase project configuration
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "cutlery-shop.firebaseapp.com",
-  projectId: "cutlery-shop",
-  storageBucket: "cutlery-shop.appspot.com",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyD5Y610IEkEIhbOXlsHBf0KZpvAFK6OL9Q",
+  authDomain: "thecleve-33b75.firebaseapp.com",
+  projectId: "thecleve-33b75",
+  storageBucket: "thecleve-33b75.firebasestorage.app",
+  messagingSenderId: "696581253308",
+  appId: "1:696581253308:web:df50bbd8f14069896f08b9",
+  measurementId: "G-JF4BQXZFCS"
 };
 
 // Initialize Firebase

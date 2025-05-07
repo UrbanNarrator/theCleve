@@ -150,7 +150,7 @@ const Products: React.FC = () => {
           category: formData.category,
         };
 
-        await updateProduct(selectedProduct.id, updatedProduct, imageFile);
+        await updateProduct(selectedProduct.id, updatedProduct);
       } else {
         const newProduct = {
           name: formData.name,

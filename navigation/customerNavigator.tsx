@@ -8,7 +8,7 @@ import Category from '../screens/customer/category';
 import Orders from '../screens/customer/orders';
 import Checkout from '../screens/customer/checkout';
 import Profile from '../screens/customer/profile';
-import { useCart } from '../context/CartContext';
+import { useCart } from '../context/cartContext';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
