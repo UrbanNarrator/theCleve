@@ -8,27 +8,36 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import ProductItem from '../../components/productItem';
 import Loading from '../../components/loading';
-import { getAllProducts, getProductsByCategory } from '../../services/products';
+import { getAllProducts } from '../../services/products';
 import { Product } from '../../types/product';
 import { useCart } from '../../context/cartContext';
+import { useAuth } from '../../context/authContext';
+import { ProductsNavigationProp } from '../../navigation/types';
 
 const Products: React.FC = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<ProductsNavigationProp>();
   const { addToCart } = useCart();
+  const { isOffline } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const loadProducts = async () => {
     try {
+      setError(null);
+      setLoading(true);
       const productsData = await getAllProducts();
       setProducts(productsData);
       setFilteredProducts(productsData);
@@ -40,9 +49,14 @@ const Products: React.FC = () => {
       setCategories(uniqueCategories);
     } catch (error) {
       console.error('Error loading products:', error);
-      Alert.alert('Error', 'Failed to load products');
+      setError('Failed to load products');
+      
+      if (isOffline) {
+        Alert.alert('Offline Mode', 'Some content may not be available while offline');
+      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -52,9 +66,11 @@ const Products: React.FC = () => {
 
   useEffect(() => {
     filterProducts();
-  }, [search, selectedCategory]);
+  }, [search, selectedCategory, products]);
 
   const filterProducts = () => {
+    if (products.length === 0) return;
+    
     let filtered = products;
     
     // Filter by search term
@@ -91,32 +107,37 @@ const Products: React.FC = () => {
 
   const handleProductPress = (product: Product) => {
     // Navigate to product details screen
-    // For this simple version, just add to cart directly
-    if (!product.inStock) {
-      Alert.alert('Out of Stock', 'This item is currently unavailable');
-      return;
-    }
-    
-    Alert.alert(
-      product.name,
-      product.description,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Add to Cart',
-          onPress: () => handleAddToCart(product),
-          style: 'default',
-        },
-      ]
-    );
+    navigation.navigate('ProductDetail', { productId: product.id });
   };
 
-  if (loading) {
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadProducts();
+  };
+
+  if (loading && !refreshing) {
     return <Loading />;
   }
 
   return (
     <View style={styles.container}>
+      {isOffline && (
+        <View style={styles.offlineBanner}>
+          <Ionicons name="cloud-offline-outline" size={20} color="white" />
+          <Text style={styles.offlineText}>You're offline. Some features may be limited.</Text>
+        </View>
+      )}
+      
+      {error && !refreshing && (
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={20} color="#e74c3c" />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadProducts}>
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <View style={styles.searchContainer}>
         <Ionicons name="search" size={20} color="#7f8c8d" style={styles.searchIcon} />
         <TextInput
@@ -188,6 +209,9 @@ const Products: React.FC = () => {
             />
           )}
           contentContainerStyle={styles.productsList}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
         />
       )}
     </View>
@@ -257,6 +281,44 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: '#7f8c8d',
+  },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e74c3c',
+    padding: 10,
+    paddingHorizontal: 15,
+  },
+  offlineText: {
+    color: 'white',
+    marginLeft: 10,
+    flex: 1,
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fdedee',
+    padding: 12,
+    margin: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#fbd2d5',
+  },
+  errorText: {
+    color: '#e74c3c',
+    marginLeft: 8,
+    flex: 1,
+  },
+  retryButton: {
+    backgroundColor: '#e74c3c',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  retryText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 12,
   },
 });
 

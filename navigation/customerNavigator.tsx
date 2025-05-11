@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Home from '../screens/customer/home';
 import Products from '../screens/customer/products';
 import Category from '../screens/customer/category';
+import ProductDetail from '../screens/customer/productDetail';
 import Orders from '../screens/customer/orders';
 import Checkout from '../screens/customer/checkout';
 import Profile from '../screens/customer/profile';
@@ -19,6 +20,11 @@ const ProductsStack = () => {
     <Stack.Navigator>
       <Stack.Screen name="ProductsList" component={Products} options={{ title: 'Products' }} />
       <Stack.Screen name="Category" component={Category} />
+      <Stack.Screen 
+        name="ProductDetail" 
+        component={ProductDetail} 
+        options={{ title: 'Product Details' }}
+      />
     </Stack.Navigator>
   );
 };

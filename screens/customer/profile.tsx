@@ -8,21 +8,26 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import Card from '../../components/card';
 import Button from '../../components/button';
 import { useAuth } from '../../context/authContext';
+import { useNetInfo } from '../../context/netinfoContext';
 import { logoutUser, updateUserProfile, getUserById } from '../../services/auth';
 import { User } from '../../types/user';
 
 const Profile: React.FC = () => {
   const navigation = useNavigation();
-  const { currentUser } = useAuth();
+  const { currentUser, isOffline, retryConnection } = useAuth();
+  const { isConnected } = useNetInfo();
   const [userData, setUserData] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     displayName: '',
     email: '',
@@ -34,11 +39,22 @@ const Profile: React.FC = () => {
     loadUserData();
   }, [currentUser]);
 
+  // Reload data when connection is restored
+  useEffect(() => {
+    if (isConnected && loadError) {
+      console.log('Connection restored, reloading profile data...');
+      loadUserData();
+    }
+  }, [isConnected]);
+
   const loadUserData = async () => {
     if (!currentUser) return;
 
     setLoading(true);
+    setLoadError(null);
+    
     try {
+      // Try to fetch full user data from Firestore
       const user = await getUserById(currentUser.id);
       setUserData(user);
       setFormData({
@@ -47,16 +63,58 @@ const Profile: React.FC = () => {
         phone: user?.phone || '',
         address: user?.address || '',
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading user data:', error);
-      Alert.alert('Error', 'Failed to load your profile');
+      
+      // Check if it's an offline error
+      if (error.message && (
+          error.message.includes('offline') || 
+          error.message.includes('network') ||
+          error.message.includes('failed to get document')
+      )) {
+        setLoadError('Unable to load complete profile while offline');
+        
+        // Use basic user data from auth context as fallback
+        setUserData({
+          id: currentUser.id,
+          email: currentUser.email,
+          displayName: currentUser.displayName,
+          role: currentUser.role || 'customer',
+          createdAt: currentUser.createdAt || new Date(),
+        });
+        
+        setFormData({
+          displayName: currentUser.displayName || '',
+          email: currentUser.email || '',
+          phone: '',
+          address: '',
+        });
+      } else {
+        setLoadError(`Failed to load profile: ${error.message}`);
+      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadUserData();
   };
 
   const handleSaveProfile = async () => {
     if (!currentUser) return;
+    
+    // Don't allow updates while offline
+    if (isOffline) {
+      Alert.alert(
+        'Offline Mode',
+        'You cannot update your profile while offline. Please connect to the internet and try again.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
 
     setLoading(true);
     try {
@@ -69,9 +127,18 @@ const Profile: React.FC = () => {
       await loadUserData();
       setEditMode(false);
       Alert.alert('Success', 'Profile updated successfully');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating profile:', error);
-      Alert.alert('Error', 'Failed to update profile');
+      
+      // Specific error for offline scenarios
+      if (error.message && (
+          error.message.includes('offline') || 
+          error.message.includes('network')
+      )) {
+        Alert.alert('Connection Error', 'Cannot update profile while offline. Please check your connection and try again.');
+      } else {
+        Alert.alert('Error', 'Failed to update profile: ' + error.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -108,10 +175,41 @@ const Profile: React.FC = () => {
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView 
+      style={styles.container}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
+      {isOffline && (
+        <View style={styles.offlineBanner}>
+          <Ionicons name="cloud-offline-outline" size={20} color="white" />
+          <Text style={styles.offlineText}>You're offline. Some profile data may be limited.</Text>
+          <TouchableOpacity 
+            style={styles.retryButton} 
+            onPress={retryConnection}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Profile</Text>
       </View>
+
+      {loadError && (
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={20} color="#e74c3c" />
+          <Text style={styles.errorText}>{loadError}</Text>
+          <TouchableOpacity 
+            style={styles.errorRetryButton} 
+            onPress={loadUserData}
+          >
+            <Text style={styles.errorRetryText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={styles.profileSection}>
         <View style={styles.avatar}>
@@ -189,6 +287,7 @@ const Profile: React.FC = () => {
                 title="Save"
                 onPress={handleSaveProfile}
                 loading={loading}
+                disabled={isOffline}
               />
             </View>
           </View>
@@ -219,7 +318,13 @@ const Profile: React.FC = () => {
               type="secondary"
               onPress={() => setEditMode(true)}
               fullWidth
+              disabled={isOffline}
             />
+            {isOffline && (
+              <Text style={styles.editDisabledText}>
+                Editing is disabled while offline
+              </Text>
+            )}
           </View>
         )}
       </Card>
@@ -441,6 +546,65 @@ const styles = StyleSheet.create({
   versionText: {
     fontSize: 12,
     color: '#95a5a6',
+  },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e74c3c',
+    padding: 10,
+    paddingHorizontal: 15,
+  },
+  offlineText: {
+    color: 'white',
+    marginLeft: 10,
+    flex: 1,
+  },
+  retryButton: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+    marginLeft: 10,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef7f7',
+    padding: 12,
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#facaca',
+  },
+  errorText: {
+    color: '#e74c3c',
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 14,
+  },
+  errorRetryButton: {
+    backgroundColor: '#e74c3c',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+    marginLeft: 10,
+  },
+  errorRetryText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  editDisabledText: {
+    textAlign: 'center',
+    color: '#e74c3c',
+    fontSize: 12,
+    marginTop: 8,
   },
 });
 

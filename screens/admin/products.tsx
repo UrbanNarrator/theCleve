@@ -10,16 +10,19 @@ import {
   TextInput,
   ScrollView,
   Image,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Card from '../../components/card';
 import Button from '../../components/button';
 import Loading from '../../components/loading';
 import { getAllProducts, getProductById, addProduct, updateProduct, deleteProduct } from '../../services/products';
-import { Product } from '../../types/product';
+import { Product, ProductInput } from '../../types/product';
 import * as ImagePicker from 'expo-image-picker';
+import { useAuth } from '../../context/authContext';
 
 const Products: React.FC = () => {
+  const { isOffline } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -29,8 +32,11 @@ const Products: React.FC = () => {
     name: '',
     description: '',
     price: '',
-    category: '',
+    category: 'Knives',
     imageUri: '',
+    inStock: true,
+    featured: false,
+    discount: '',
   });
   const [imageFile, setImageFile] = useState<any>(null);
 
@@ -55,8 +61,11 @@ const Products: React.FC = () => {
       name: '',
       description: '',
       price: '',
-      category: '',
+      category: 'Knives',
       imageUri: '',
+      inStock: true,
+      featured: false,
+      discount: '',
     });
     setImageFile(null);
     setSelectedProduct(null);
@@ -64,11 +73,19 @@ const Products: React.FC = () => {
   };
 
   const handleAddProduct = () => {
+    if (isOffline) {
+      Alert.alert('Offline Mode', 'Product management is disabled while offline');
+      return;
+    }
     resetForm();
     setModalVisible(true);
   };
 
   const handleEditProduct = (product: Product) => {
+    if (isOffline) {
+      Alert.alert('Offline Mode', 'Product management is disabled while offline');
+      return;
+    }
     setIsEditing(true);
     setSelectedProduct(product);
     setFormData({
@@ -77,11 +94,19 @@ const Products: React.FC = () => {
       price: product.price.toString(),
       category: product.category,
       imageUri: product.imageUrl,
+      inStock: product.inStock,
+      featured: product.featured || false,
+      discount: product.discount ? product.discount.toString() : '',
     });
     setModalVisible(true);
   };
 
   const handleDeleteProduct = (product: Product) => {
+    if (isOffline) {
+      Alert.alert('Offline Mode', 'Product management is disabled while offline');
+      return;
+    }
+    
     Alert.alert(
       'Confirm Delete',
       `Are you sure you want to delete "${product.name}"?`,
@@ -109,71 +134,105 @@ const Products: React.FC = () => {
   };
 
   const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 1,
-    });
-
-    if (!result.canceled) {
-      setFormData({ ...formData, imageUri: result.assets[0].uri });
+    if (isOffline) {
+      Alert.alert('Offline Mode', 'Image upload is disabled while offline');
+      return;
+    }
+    
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       
-      // Convert URI to Blob for Firebase upload
-      const response = await fetch(result.assets[0].uri);
-      const blob = await response.blob();
-      setImageFile(blob);
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'You need to allow access to your photos to upload an image.');
+        return;
+      }
+      
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setFormData({ ...formData, imageUri: result.assets[0].uri });
+        setImageFile(result.assets[0]);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image');
     }
   };
 
-  const handleSubmit = async () => {
-    if (!formData.name || !formData.price || !formData.category || (!isEditing && !formData.imageUri)) {
-      Alert.alert('Error', 'Please fill in all required fields and add an image');
-      return;
-    }
+  // For updating products:
+const handleSubmit = async () => {
+  if (isOffline) {
+    Alert.alert('Offline Mode', 'You cannot add or update products while offline.');
+    return;
+  }
+  
+  if (!formData.name || !formData.price || !formData.category || (!isEditing && !formData.imageUri)) {
+    Alert.alert('Error', 'Please fill in all required fields and add an image');
+    return;
+  }
 
-    const price = parseFloat(formData.price);
-    if (isNaN(price) || price <= 0) {
-      Alert.alert('Error', 'Please enter a valid price');
-      return;
-    }
+  const price = parseFloat(formData.price);
+  if (isNaN(price) || price <= 0) {
+    Alert.alert('Error', 'Please enter a valid price');
+    return;
+  }
 
-    try {
-      setLoading(true);
-      setModalVisible(false);
+  try {
+    setLoading(true);
+    setModalVisible(false);
 
-      if (isEditing && selectedProduct) {
-        const updatedProduct = {
-          name: formData.name,
-          description: formData.description,
-          price,
-          category: formData.category,
-        };
-
-        await updateProduct(selectedProduct.id, updatedProduct);
-      } else {
-        const newProduct = {
-          name: formData.name,
-          description: formData.description,
-          price,
-          category: formData.category,
-          imageUrl: formData.imageUri, // Add imageUrl property
-          inStock: false, // Will be set true when inventory is added
-        };
-
-        await addProduct(newProduct, imageFile);
+    if (isEditing && selectedProduct) {
+      // Create a proper ProductInput object
+      const updatedProduct: Partial<ProductInput> = {
+        name: formData.name,
+        description: formData.description,
+        price,
+        category: formData.category as 'Knives' | 'Forks' | 'Spoons' | 'Sets',
+        inStock: formData.inStock,
+        featured: formData.featured,
+      };
+      
+      // Add discount if it exists
+      if (formData.discount && formData.discount.trim() !== '') {
+        updatedProduct.discount = parseFloat(formData.discount);
       }
 
-      resetForm();
-      await loadProducts();
-      Alert.alert('Success', isEditing ? 'Product updated successfully' : 'Product added successfully');
-    } catch (error) {
-      console.error('Error saving product:', error);
-      Alert.alert('Error', 'Failed to save product');
-    } finally {
-      setLoading(false);
+      await updateProduct(selectedProduct.id, updatedProduct, imageFile);
+    } else {
+      // Create a proper ProductInput object
+      const newProduct: ProductInput = {
+        name: formData.name,
+        description: formData.description,
+        price,
+        category: formData.category as 'Knives' | 'Forks' | 'Spoons' | 'Sets',
+        imageUrl: formData.imageUri,
+        inStock: formData.inStock,
+        featured: formData.featured,
+      };
+      
+      // Add discount if it exists
+      if (formData.discount && formData.discount.trim() !== '') {
+        newProduct.discount = parseFloat(formData.discount);
+      }
+
+      await addProduct(newProduct, imageFile);
     }
-  };
+
+    resetForm();
+    await loadProducts();
+    Alert.alert('Success', isEditing ? 'Product updated successfully' : 'Product added successfully');
+  } catch (error) {
+    console.error('Error saving product:', error);
+    Alert.alert('Error', 'Failed to save product');
+  } finally {
+    setLoading(false);
+  }
+};
 
   if (loading) {
     return <Loading />;
@@ -181,9 +240,20 @@ const Products: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      {isOffline && (
+        <View style={styles.offlineBanner}>
+          <Ionicons name="cloud-offline-outline" size={20} color="white" />
+          <Text style={styles.offlineText}>You're offline. Product management is disabled.</Text>
+        </View>
+      )}
+      
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Products</Text>
-        <TouchableOpacity style={styles.addButton} onPress={handleAddProduct}>
+        <TouchableOpacity 
+          style={[styles.addButton, isOffline && styles.disabledButton]} 
+          onPress={handleAddProduct}
+          disabled={isOffline}
+        >
           <Ionicons name="add" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
@@ -191,7 +261,11 @@ const Products: React.FC = () => {
       {products.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No products found</Text>
-          <Button title="Add Product" onPress={handleAddProduct} />
+          <Button 
+            title="Add Product" 
+            onPress={handleAddProduct} 
+            disabled={isOffline}
+          />
         </View>
       ) : (
         <FlatList
@@ -200,10 +274,13 @@ const Products: React.FC = () => {
           renderItem={({ item }) => (
             <Card style={styles.productCard}>
               <View style={styles.productContainer}>
-                <Image source={{ uri: item.imageUrl }} style={styles.productImage} />
+                <Image 
+                  source={{ uri: item.imageUrl || 'https://via.placeholder.com/80?text=No+Image' }} 
+                  style={styles.productImage} 
+                />
                 <View style={styles.productInfo}>
                   <Text style={styles.productName}>{item.name}</Text>
-                  <Text style={styles.productPrice}>${item.price.toFixed(2)}</Text>
+                  <Text style={styles.productPrice}>KSh {item.price.toLocaleString()}</Text>
                   <Text style={styles.productCategory}>{item.category}</Text>
                   <Text style={[
                     styles.productStatus,
@@ -211,19 +288,34 @@ const Products: React.FC = () => {
                   ]}>
                     {item.inStock ? 'In Stock' : 'Out of Stock'}
                   </Text>
+                  {item.featured && (
+                    <View style={styles.featuredBadge}>
+                      <Text style={styles.featuredText}>Featured</Text>
+                    </View>
+                  )}
                 </View>
                 <View style={styles.productActions}>
                   <TouchableOpacity
                     style={styles.actionButton}
                     onPress={() => handleEditProduct(item)}
+                    disabled={isOffline}
                   >
-                    <Ionicons name="create-outline" size={22} color="#3498db" />
+                    <Ionicons 
+                      name="create-outline" 
+                      size={22} 
+                      color={isOffline ? "#bdc3c7" : "#3498db"} 
+                    />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.actionButton}
                     onPress={() => handleDeleteProduct(item)}
+                    disabled={isOffline}
                   >
-                    <Ionicons name="trash-outline" size={22} color="#e74c3c" />
+                    <Ionicons 
+                      name="trash-outline" 
+                      size={22} 
+                      color={isOffline ? "#bdc3c7" : "#e74c3c"} 
+                    />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -259,7 +351,7 @@ const Products: React.FC = () => {
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Name</Text>
+                <Text style={styles.label}>Name *</Text>
                 <TextInput
                   style={styles.input}
                   value={formData.name}
@@ -281,28 +373,92 @@ const Products: React.FC = () => {
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Price ($)</Text>
+                <Text style={styles.label}>Price (KSh) *</Text>
                 <TextInput
                   style={styles.input}
                   value={formData.price}
-                  onChangeText={(value) => setFormData({ ...formData, price: value })}
+                  onChangeText={(value) => {
+                    // Allow only numbers and one decimal point
+                    const filtered = value.replace(/[^0-9.]/g, '');
+                    // Ensure only one decimal point
+                    const parts = filtered.split('.');
+                    const newValue = parts.length > 2 
+                      ? parts[0] + '.' + parts.slice(1).join('')
+                      : filtered;
+                    setFormData({ ...formData, price: newValue });
+                  }}
                   placeholder="0.00"
                   keyboardType="decimal-pad"
                 />
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Category</Text>
+                <Text style={styles.label}>Discount (%)</Text>
                 <TextInput
                   style={styles.input}
-                  value={formData.category}
-                  onChangeText={(value) => setFormData({ ...formData, category: value })}
-                  placeholder="e.g. Knives, Forks, Spoons, Sets"
+                  value={formData.discount}
+                  onChangeText={(value) => {
+                    // Allow only numbers and one decimal point
+                    const filtered = value.replace(/[^0-9.]/g, '');
+                    // Ensure only one decimal point
+                    const parts = filtered.split('.');
+                    const newValue = parts.length > 2 
+                      ? parts[0] + '.' + parts.slice(1).join('')
+                      : filtered;
+                    setFormData({ ...formData, discount: newValue });
+                  }}
+                  placeholder="0"
+                  keyboardType="decimal-pad"
                 />
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Product Image</Text>
+                <Text style={styles.label}>Category *</Text>
+                <View style={styles.categoryButtons}>
+                  {['Knives', 'Forks', 'Spoons', 'Sets'].map(category => (
+                    <TouchableOpacity
+                      key={category}
+                      style={[
+                        styles.categoryButton,
+                        formData.category === category && styles.categoryButtonActive
+                      ]}
+                      onPress={() => setFormData({ ...formData, category })}
+                    >
+                      <Text
+                        style={[
+                          styles.categoryButtonText,
+                          formData.category === category && styles.categoryButtonTextActive
+                        ]}
+                      >
+                        {category}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.switchContainer}>
+                <Text style={styles.label}>In Stock</Text>
+                <Switch
+                  value={formData.inStock}
+                  onValueChange={(value) => setFormData({ ...formData, inStock: value })}
+                  trackColor={{ false: '#d1d1d1', true: '#2ecc71' }}
+                  thumbColor={formData.inStock ? '#fff' : '#f4f3f4'}
+                />
+              </View>
+
+              <View style={styles.switchContainer}>
+                <Text style={styles.label}>Featured Product</Text>
+                <Switch
+                  value={formData.featured}
+                  onValueChange={(value) => setFormData({ ...formData, featured: value })}
+                  trackColor={{ false: '#d1d1d1', true: '#3498db' }}
+                  thumbColor={formData.featured ? '#fff' : '#f4f3f4'}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Product Image *</Text>
                 <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
                   {formData.imageUri ? (
                     <Image source={{ uri: formData.imageUri }} style={styles.previewImage} />
@@ -361,6 +517,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  disabledButton: {
+    backgroundColor: '#bdc3c7',
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -408,6 +567,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     marginTop: 4,
+  },
+  featuredBadge: {
+    backgroundColor: '#3498db',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginTop: 4,
+    alignSelf: 'flex-start',
+  },
+  featuredText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   productActions: {
     flexDirection: 'row',
@@ -460,6 +632,36 @@ const styles = StyleSheet.create({
     height: 100,
     textAlignVertical: 'top',
   },
+  switchContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 16,
+  },
+  categoryButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  categoryButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f5f5f5',
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  categoryButtonActive: {
+    backgroundColor: '#3498db',
+  },
+  categoryButtonText: {
+    fontSize: 14,
+    color: '#34495e',
+  },
+  categoryButtonTextActive: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
   imagePicker: {
     borderWidth: 1,
     borderColor: '#ddd',
@@ -487,6 +689,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 16,
+  },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e74c3c',
+    padding: 10,
+    paddingHorizontal: 15,
+  },
+  offlineText: {
+    color: 'white',
+    marginLeft: 10,
+    flex: 1,
   },
 });
 

@@ -6,27 +6,38 @@ import {
   FlatList,
   TouchableOpacity,
   Alert,
+  RefreshControl,
 } from 'react-native';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import ProductItem from '../../components/productItem';
 import Loading from '../../components/loading';
 import { getProductsByCategory } from '../../services/products';
 import { Product } from '../../types/product';
 import { useCart } from '../../context/cartContext';
+import { useAuth } from '../../context/authContext';
+import { useNetInfo } from '../../context/netinfoContext';
+import { ProductsNavigationProp } from '../../navigation/types';
 
 type RouteParams = {
-  category: string;
+  Category: {
+    category: string;
+  };
 };
 
 const Category: React.FC = () => {
-  const route = useRoute();
-  const navigation = useNavigation();
+  const route = useRoute<RouteProp<RouteParams, 'Category'>>();
+  const navigation = useNavigation<ProductsNavigationProp>();
   const { addToCart } = useCart();
-  const { category } = route.params as RouteParams;
+  const { isOffline } = useAuth();
+  const { isConnected } = useNetInfo();
+  const { category } = route.params;
   
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     navigation.setOptions({
@@ -36,16 +47,34 @@ const Category: React.FC = () => {
     loadProducts();
   }, [category]);
 
+  // Reload when connection is restored
+  useEffect(() => {
+    if (isConnected && error) {
+      loadProducts();
+    }
+  }, [isConnected]);
+
   const loadProducts = async () => {
     try {
+      setError(null);
       const productsData = await getProductsByCategory(category);
       setProducts(productsData);
-    } catch (error) {
-      console.error('Error loading products:', error);
-      Alert.alert('Error', 'Failed to load products for this category');
+    } catch (err) {
+      console.error('Error loading products:', err);
+      setError(`Failed to load ${category} products`);
+      
+      if (isOffline) {
+        Alert.alert('Offline Mode', 'Some content may not be available while offline');
+      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadProducts();
   };
 
   const handleAddToCart = (product: Product) => {
@@ -59,51 +88,45 @@ const Category: React.FC = () => {
   };
 
   const handleProductPress = (product: Product) => {
-    // For a simple version, just add to cart directly
-    if (!product.inStock) {
-      Alert.alert('Out of Stock', 'This item is currently unavailable');
-      return;
-    }
-    
-    Alert.alert(
-      product.name,
-      product.description,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Add to Cart',
-          onPress: () => handleAddToCart(product),
-          style: 'default',
-        },
-      ]
-    );
+    // Navigate to product details screen
+    navigation.navigate('ProductDetail', { productId: product.id });
   };
 
-  if (loading) {
+  if (loading && !refreshing) {
     return <Loading />;
   }
 
   return (
     <View style={styles.container}>
+      {isOffline && (
+        <View style={styles.offlineBanner}>
+          <Ionicons name="cloud-offline-outline" size={20} color="white" />
+          <Text style={styles.offlineText}>You're offline. Some features may be limited.</Text>
+        </View>
+      )}
+      
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#34495e" />
-        </TouchableOpacity>
         <Text style={styles.headerTitle}>{category}</Text>
-        <View style={styles.placeholder} />
       </View>
+      
+      {error && !refreshing && (
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={20} color="#e74c3c" />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadProducts}>
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
-      {products.length === 0 ? (
+      {products.length === 0 && !error ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No products found in this category</Text>
           <TouchableOpacity
             style={styles.backToProductsButton}
-            onPress={() => navigation.navigate('ProductsList' as never)}
+            onPress={() => navigation.navigate('ProductsList')}
           >
-            <Text style={styles.backToProductsText}>Back to All Products</Text>
+            <Text style={styles.backToProductsText}>Browse All Products</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -119,6 +142,13 @@ const Category: React.FC = () => {
             />
           )}
           contentContainerStyle={styles.productsList}
+          refreshControl={
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={onRefresh} 
+              colors={['#3498db']}
+            />
+          }
         />
       )}
     </View>
@@ -131,24 +161,41 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     padding: 16,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e1e1e1',
   },
-  backButton: {
-    padding: 8,
-  },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#34495e',
   },
-  placeholder: {
-    width: 40,
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fdedee',
+    padding: 12,
+    margin: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#fbd2d5',
+  },
+  errorText: {
+    color: '#e74c3c',
+    marginLeft: 8,
+    flex: 1,
+  },
+  retryButton: {
+    backgroundColor: '#e74c3c',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  retryText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 12,
   },
   emptyContainer: {
     flex: 1,
@@ -174,6 +221,18 @@ const styles = StyleSheet.create({
   },
   productsList: {
     padding: 16,
+  },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e74c3c',
+    padding: 10,
+    paddingHorizontal: 15,
+  },
+  offlineText: {
+    color: 'white',
+    marginLeft: 10,
+    flex: 1,
   },
 });
 

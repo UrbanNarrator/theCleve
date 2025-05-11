@@ -58,7 +58,10 @@ const Home: React.FC = () => {
 
   const handleProductPress = (product: Product) => {
     // Navigate to product details
-    navigation.navigate('Products');
+    navigation.navigate('Products', {
+      screen: 'ProductDetail',
+      params: { productId: product.id }
+    });
   };
 
   const handleAddToCart = (product: Product) => {
@@ -137,7 +140,10 @@ const Home: React.FC = () => {
             <TouchableOpacity
               key={category.id}
               style={styles.categoryCard}
-              onPress={() => navigation.navigate('Category', { category: category.name })}
+              onPress={() => navigation.navigate('Products', {
+                screen: 'Category',
+                params: { category: category.name }
+              })}
             >
               <View style={[styles.categoryContent, { backgroundColor: category.color }]}>
                 <Text style={styles.categoryIcon}>{category.icon}</Text>
@@ -152,10 +158,7 @@ const Home: React.FC = () => {
         <Card>
           <Text style={styles.infoTitle}>Store Information</Text>
           <Text style={styles.infoText}>
-            Visit our shop in town to collect your orders. We're open Monday to Saturday, 9 AM to 6 PM.
-          </Text>
-          <Text style={styles.infoAddress}>
-            123 Main Street, Town Center
+            Visit our shop in Juja town to collect your orders. We're open from Monday to Friday, 9AM to 5PM.
           </Text>
         </Card>
       </View>
@@ -300,11 +303,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#7f8c8d',
     marginBottom: 8,
-  },
-  infoAddress: {
-    fontSize: 14,
-    color: '#3498db',
-    fontWeight: '500',
   },
 });
 
